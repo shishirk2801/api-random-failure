@@ -1,231 +1,166 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import { useEffect, useState, useRef } from "react";
+import { Loader2, Undo2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
-  ColumnDef,
-  ColumnFiltersState,
-  SortingState,
-  VisibilityState,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table"
-import { ArrowUpDown, ChevronDown } from "lucide-react"
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
 
-import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Articles } from "@/types/articles"
+interface Article {
+  id: number;
+  title: string;
+  content: string;
+}
 
-const data: Articles[] = [
-  {
-    id: "m5gr84i9",
-    content: "pending",
-    title: "ken99@yahoo.com",
-  },
-  {
-    id: "3u1reuv4",
-    content: "pending",
-    title: "Abe45@gmail.com",
-  },
-  {
-    id: "derv1ws0",
-    content: "pending",
-    title: "Monserrat44@gmail.com",
-  },
-  {
-    id: "5kma53ae",
-    content: "pending",
-    title: "Silas22@gmail.com",
-  },
-  {
-    id: "bhqecj4p",
-    content: "pending",
-    title: "carmella@hotmail.com",
-  },
-]
+interface ArticleResponse {
+  page: number;
+  per_page: number;
+  is_next: boolean;
+  data: Article[];
+}
 
-const columns: ColumnDef<Articles>[] = [
-  {
-    accessorKey: "title",
-    header: ({ column }) => {
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          Title
-          <ArrowUpDown />
-        </Button>
-      )
-    },
-    cell: ({ row }) => <div className="lowercase">{row.getValue("title")}</div>,
-  },
-  {
-    accessorKey: "content",
-    header: "Content",
-    cell: ({ row }) => (
-      <div className="capitalize">{row.getValue("content")}</div>
-    ),
-  }
-]
+export default function ArticlesPage() {
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [currentPage, setCurrentPage] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return parseInt(params.get("page") || "1", 10);
+  });
+  const [hasNext, setHasNext] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const loadMoreButtonRef = useRef<HTMLButtonElement>(null);
 
-export default function DataTableDemo() {
-  const [sorting, setSorting] = React.useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    []
-  )
-  const [columnVisibility, setColumnVisibility] =
-    React.useState<VisibilityState>({})
-  const [rowSelection, setRowSelection] = React.useState({})
+  const fetchArticles = async (page: number) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(
+        `http://localhost:5000/articles?page=${page}`
+      );
+      if (!response.ok) {
+        if (response.status === 500) {
+          for (let i = 0; i < 3; i++) {
+            console.log("Retrying...");
+            const retryResponse = await fetch(
+              `http://localhost:5000/articles?page=${page}`
+            );
+            if (retryResponse.ok) {
+              const data: ArticleResponse = await retryResponse.json();
+              return data;
+            }
+          }
+          throw new Error("Failed to fetch articles");
+        }
+        throw new Error("Failed to fetch articles");
+      }
+      const data: ArticleResponse = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error fetching articles:", error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const table = useReactTable({
-    data,
-    columns,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-    },
-  })
+  useEffect(() => {
+    const loadInitialArticles = async () => {
+      try {
+        const data = await fetchArticles(currentPage);
+        setArticles(data.data);
+        setHasNext(data.is_next);
+      } catch (error) {
+        console.error("Error loading initial articles:", error);
+      }
+    };
+
+    loadInitialArticles();
+  }, [currentPage]);
+
+  const loadMorePage = async () => {
+    try {
+      const data = await fetchArticles(currentPage + 1);
+      setArticles((prevArticles) => [...prevArticles, ...data.data]);
+      setCurrentPage(data.page);
+      setHasNext(data.is_next);
+      const params = new URLSearchParams(window.location.search);
+      params.set("page", data.page.toString());
+      window.history.replaceState({}, "", `${window.location.pathname}?${params}`);
+    } catch (error) {
+      console.error("Error loading more articles:", error);
+    }
+  };
 
   return (
-    <div className="w-full p-5">
-      <div className="flex items-center py-4">
-        <Input
-          placeholder="Filter Titels..."
-          value={(table.getColumn("title")?.getFilterValue() as string) ?? ""}
-          onChange={(event) =>
-            table.getColumn("title")?.setFilterValue(event.target.value)
-          }
-          className="max-w-sm"
-        />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="ml-auto">
-              Columns <ChevronDown />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {table
-              .getAllColumns()
-              .filter((column) => column.getCanHide())
-              .map((column) => {
-                return (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    className="capitalize"
-                    checked={column.getIsVisible()}
-                    onCheckedChange={(value) =>
-                      column.toggleVisibility(!!value)
-                    }
-                  >
-                    {column.id}
-                  </DropdownMenuCheckboxItem>
-                )
-              })}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => {
-                  return (
-                    <TableHead key={header.id}>
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                    </TableHead>
-                  )
-                })}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
+    <div className="container mx-auto py-10">
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold tracking-tight">Articles</h1>
+          <p className="text-sm text-muted-foreground">Page {currentPage}</p>
+        </div>
+
+        {isLoading ? (
+          <div className="h-[300px] flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {articles.length > 0 ? (
+              articles.map((article) => (
+                <Card key={article.id}>
+                  <CardHeader>
+                    <CardTitle className="line-clamp-2">
+                      {article.title}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground line-clamp-3">
+                      {article.content}
+                    </p>
+                  </CardContent>
+                  <CardFooter>
+                    <Button>Read More</Button>
+                  </CardFooter>
+                </Card>
               ))
             ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  No results.
-                </TableCell>
-              </TableRow>
+              <div className="col-span-full text-center text-muted-foreground py-10">
+                No articles found.
+              </div>
             )}
-          </TableBody>
-        </Table>
-      </div>
-      <div className="flex items-center justify-end space-x-2 py-4">
-        <div className="flex-1 text-sm text-muted-foreground">
-          {table.getFilteredSelectedRowModel().rows.length} of{" "}
-          {table.getFilteredRowModel().rows.length} row(s) selected.
-        </div>
-        <div className="space-x-2">
+          </div>
+        )}
+
+        <div className="flex items-center justify-center gap-4">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
+            onClick={() => {
+              if (currentPage > 1) {
+                setCurrentPage(currentPage - 1);
+              }
+            }}
+            disabled={currentPage === 1 || isLoading}
+            className="px-6 py-3 text-lg flex items-center"
+            style={{ marginRight: "auto" }}
           >
-            Previous
+            <Undo2 />
+            Go to Previous Page
           </Button>
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
+            ref={loadMoreButtonRef}
+            onClick={() => loadMorePage()}
+            disabled={!hasNext || isLoading}
+            className="px-6 py-3 text-lg"
           >
-            Next
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : null}
+            {isLoading ? "Loading..." : "Show more Articles"}
           </Button>
         </div>
       </div>
     </div>
-  )
+  );
 }

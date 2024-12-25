@@ -1,7 +1,9 @@
 from flask import Flask, jsonify, request
 import random
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 # Constant for the number of articles per page
 PER_PAGE = 12

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Loader2, Undo2 } from "lucide-react";
+import { Loader2, RefreshCcw, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,19 +10,8 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
+import { Article, ArticleResponse } from "@/types/articles";
 
-interface Article {
-  id: number;
-  title: string;
-  content: string;
-}
-
-interface ArticleResponse {
-  page: number;
-  per_page: number;
-  is_next: boolean;
-  data: Article[];
-}
 
 export default function ArticlesPage() {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -32,6 +21,7 @@ export default function ArticlesPage() {
   });
   const [hasNext, setHasNext] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [fetchFailed, setFetchFailed] = useState(false);
   const loadMoreButtonRef = useRef<HTMLButtonElement>(null);
 
   const fetchArticles = async (page: number) => {
@@ -57,10 +47,11 @@ export default function ArticlesPage() {
         throw new Error("Failed to fetch articles");
       }
       const data: ArticleResponse = await response.json();
+      setFetchFailed(false);
       return data;
     } catch (error) {
       console.error("Error fetching articles:", error);
-      throw error;
+      setFetchFailed(true);
     } finally {
       setIsLoading(false);
     }
@@ -70,8 +61,10 @@ export default function ArticlesPage() {
     const loadInitialArticles = async () => {
       try {
         const data = await fetchArticles(currentPage);
-        setArticles(data.data);
-        setHasNext(data.is_next);
+        if (data) {
+          setArticles(data.data);
+          setHasNext(data.is_next);
+        }
       } catch (error) {
         console.error("Error loading initial articles:", error);
       }
@@ -83,17 +76,41 @@ export default function ArticlesPage() {
   const loadMorePage = async () => {
     try {
       const data = await fetchArticles(currentPage + 1);
-      setArticles((prevArticles) => [...prevArticles, ...data.data]);
-      setCurrentPage(data.page);
-      setHasNext(data.is_next);
-      const params = new URLSearchParams(window.location.search);
-      params.set("page", data.page.toString());
-      window.history.replaceState({}, "", `${window.location.pathname}?${params}`);
+      if (data) {
+        setArticles((prevArticles) => [...prevArticles, ...data.data]);
+        setCurrentPage(data.page);
+        setHasNext(data.is_next);
+        const params = new URLSearchParams(window.location.search);
+        params.set("page", data.page.toString());
+        window.history.replaceState({}, "", `${window.location.pathname}?${params}`);
+      }
     } catch (error) {
       console.error("Error loading more articles:", error);
     }
   };
-
+  const ErrorMessage = () => (
+    <div className="flex flex-col items-center justify-center h-[300px] gap-4">
+      <div className="text-center space-y-2">
+        <h3 className="text-lg font-semibold text-red-500">
+          Failed to load articles
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          There was an error loading the articles.
+        </p>
+      </div>
+      <Button
+        variant="outline"
+        onClick={() => {
+          setFetchFailed(false);
+          fetchArticles(currentPage);
+        }}
+        className="flex items-center gap-2"
+      >
+        <RefreshCcw className="h-4 w-4" />
+        Retry
+      </Button>
+    </div>
+  );
   return (
     <div className="container mx-auto py-10">
       <div className="flex flex-col gap-6">
@@ -106,6 +123,8 @@ export default function ArticlesPage() {
           <div className="h-[300px] flex items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
+        ) : fetchFailed ? (
+          <ErrorMessage />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {articles.length > 0 ? (
